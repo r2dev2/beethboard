@@ -2,3 +2,5 @@
 *.swp
 line
 *.json
+__pycache__
+

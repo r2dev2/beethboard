@@ -1,9 +1,12 @@
 from contextlib import suppress
 from struct import unpack, calcsize
+from pathlib import Path
 import json
 import time
 import os
 import serial
+
+from recorder import Recorder, Commander
 
 buff_size = 16
 port = 115200
@@ -28,20 +31,33 @@ def parse_line(line: bytes):
     return lino
 
 def main():
-    all_lines = []
+    commander = Commander()
+    recorder = Recorder(Path("recordings"))
     with serial.Serial(device, port) as ser:
-        beg = time.time()
-        for i, batch in enumerate(filter(bool, map(parse_line, ser))):
-            if i == 0:
-                beg = time.time()
-            all_lines.extend(batch)
-            print(len(all_lines), batch[0], batch[-1])
-            print(len(all_lines) / (time.time() - beg))
-            # debug after 30s
-            if time.time() - beg > 10:
-                with open("owo.json", "w+") as fout:
-                    json.dump(all_lines, fout)
-                    return
+        for batch in filter(bool, map(parse_line, ser)):
+            command = commander.get_cmd()
+            if command is not None:
+                cmd, *args = command
+                if cmd in {"r", "record"} and len(args) >= 1:
+                    recorder.start_record(args[0])
+                if cmd in {"s", "stop"}:
+                    recorder.stop_record()
+            recorder.save_data(batch)
+
+    # all_lines = []
+    # with serial.Serial(device, port) as ser:
+    #     beg = time.time()
+    #     for i, batch in enumerate(filter(bool, map(parse_line, ser))):
+    #         if i == 0:
+    #             beg = time.time()
+    #         all_lines.extend(batch)
+    #         # print(len(all_lines), batch[0], batch[-1])
+    #         # print(len(all_lines) / (time.time() - beg))
+    #         # debug after 30s
+    #         if time.time() - beg > 10:
+    #             with open("owo.json", "w+") as fout:
+    #                 json.dump(all_lines, fout)
+    #                 return
 
 
 if __name__ == "__main__":
