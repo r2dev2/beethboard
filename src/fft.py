@@ -30,7 +30,7 @@ def get_peaks(data, internals=None):
     if internals is not None:
         internals.update(locals()) # for debugging
 
-    return [Peak(freq[i], fourier[i]) for i in peak_loc[:5]]
+    return [Peak(freq[i], fourier[i]) for i in peak_loc[:3]]
 
 def main():
     with open([*sys.argv, "owo.json"][1], "r") as fin:
