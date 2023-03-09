@@ -8,6 +8,7 @@ import time
 import os
 import serial
 import sys
+from argparse import ArgumentParser
 
 from recorder import Recorder, Commander
 from fft import get_peaks, Peak
@@ -38,9 +39,9 @@ def parse_line(line: bytes):
         lino.append(unpack(data_fmt, line[start:end]))
     return lino
 
-def record():
+def record(args):
     commander = Commander()
-    recorder = Recorder(Path("recordings"))
+    recorder = Recorder(args.rdir)
     with serial.Serial(device, port) as ser:
         for batch in filter(bool, map(parse_line, ser)):
             command = commander.get_cmd()
@@ -56,55 +57,80 @@ def record():
 
 
 def chi_square(observed, expected):
+    # obs = sorted(observed, key=lambda o: o.freq)[0].freq
+    # exp = sorted(expected, key=lambda e: e.freq)[0].freq
+    # return (obs - exp) ** 2 / exp
     exp_scale = 1 / expected[0].intensity
     ob_scale = 1 / observed[0].intensity
+    return sum(
+        (e.intensity * exp_scale + o.intensity * ob_scale) * (o.freq - e.freq) ** 2 / e.freq
+        for o, e in zip(observed, expected)
+    )
     chi1 =  sum((o.freq - e.freq) ** 2 / e.freq for o, e in zip(observed, expected))
     chi2 = sum((o.intensity * ob_scale - e.intensity * exp_scale) ** 2 / (e.intensity * exp_scale) for o, e in zip(observed, expected))
-    chi2 *= observed[0].freq
+    chi2 *= observed[0].freq ** 2
     return chi1 + chi2
 
 
-def detect():
+def detect(args):
     commander = Commander()
     measurements = []
 
     cal_peaks = []
-    rdir = Path("recordings")
+    rdir = args.rdir
     for record in os.listdir(rdir):
         with open(rdir / record, "r") as fin:
-            data = json.load(fin)
+            data = json.load(fin)[1000:2000]
         peaks = get_peaks(data)
         cal_peaks.append(CalibrationPeak(record, peaks))
 
     with serial.Serial(device, port) as ser:
         for batch in filter(bool, map(parse_line, ser)):
             measurements.extend(batch)
-            measurements = measurements[-1000:]
+            measurements = measurements[-256:]
             with suppress(Exception):
                 peaks = get_peaks(measurements)
                 if peaks[0].intensity < 600:
                     continue
-                # try:
-                #     print(chi_square(peaks, cal_peaks[0].peaks))
-                # except Exception as e:
-                #     print(e)
-                # print(peaks)
                 try:
                     chis = [(chi_square(peaks, cp.peaks), cp) for cp in cal_peaks]
                     cs, mat = min(chis)
-                    # if cs > 300:
-                    print(mat.iid.split(".")[0], cs)
+                    if cs < 35:
+                        print(mat.iid.split(".")[0], peaks[0].intensity, cs)
                 except Exception as e:
                     print(traceback.format_exc())
-                # print(chis)
-                # print(chis[0][1])
 
 
 def main():
-    if "--record" in sys.argv:
-        record()
-    else:
-        detect()
+    parser = ArgumentParser()
+    sub = parser.add_subparsers(help="subparsers")
+
+    rec = sub.add_parser("record", help="record the notes")
+    det = sub.add_parser("detect", help="detect the notes")
+
+    rec.add_argument(
+        "-r",
+        "--rdir",
+        help="record dir",
+        type=Path,
+        default=Path("recording")
+    )
+    det.add_argument(
+        "-r",
+        "--rdir",
+        help="record dir",
+        type=Path,
+        default=Path("recording")
+    )
+
+    rec.set_defaults(func=record)
+    det.set_defaults(func=detect)
+
+    args = parser.parse_args()
+    if "func" not in args:
+        print("ERR: specify a subcommand", file=sys.stderr)
+        return 1
+    args.func(args)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ class Peak(NamedTuple):
     intensity: float
 
 
-def get_peaks(data, internals=None):
+def get_peaks(data, internals=None, limit=1000):
     data.sort(key=lambda x: x[0])
     time = np.array([t / 1e6 for t, _ in data])
     ampie = np.array([a for _, a in data])
@@ -23,8 +23,8 @@ def get_peaks(data, internals=None):
     sampling_freq = 1/np.mean(intie)
     freq = np.arange(len(time)) * sampling_freq / len(time)
     peaks, _ = find_peaks(fourier, distance=30 * len(time)/sampling_freq)
-    peaks = peaks[peaks > 200 * len(time)/sampling_freq]
-    peak_loc = list(peaks)
+    # peaks = peaks[peaks > 200 * len(time)/sampling_freq]
+    peak_loc = [p for p in peaks if 50 < freq[p] < limit]
     peak_loc.sort(key=lambda i: fourier[i], reverse=True)
 
     if internals is not None:
