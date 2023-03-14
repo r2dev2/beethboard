@@ -1,6 +1,7 @@
 #define MIC_READ_PIN A0
 #define BUFF_SIZE 256
-#define BAUD 153600
+#define BAUD 853600
+#define BAUD 2500000
 
 int tx_head = 0;
 int tx_sent = 0;
@@ -14,15 +15,17 @@ void setup() {
 }
 
 void loop() {
-	if (Serial.availableForWrite() <= 0) return;
+	if (Serial.availableForWrite() <= 8) return;
 	mic_read[tx_head] = analogRead(MIC_READ_PIN);
 	timestamp[tx_head] = micros();
 	Serial.write((uint8_t *) &timestamp[tx_head], sizeof(unsigned long) / sizeof(char));
 	Serial.write((uint8_t *) &mic_read[tx_head], sizeof(int) / sizeof(char));
 	tx_sent++;
 	tx_head = (tx_head + 1) % BUFF_SIZE;
-	if (tx_sent % 16 == 0) {
+	if (tx_sent % 256 == 0) {
 		tx_sent = 0;
-		Serial.println();
+		Serial.write('\r');
+		Serial.write('\n');
+		// Serial.println();
 	}
 }

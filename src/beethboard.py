@@ -9,13 +9,16 @@ import os
 import serial
 import sys
 from argparse import ArgumentParser
+from collections import Counter
 
 from recorder import Recorder, Commander
 from fft import get_peaks, Peak
+from typer import write
 
-buff_size = 16
+buff_size = 256
 port = 115200
-port = 153600
+port = 853600
+port = 2_500_000
 # port = 2457600
 device = os.environ.get("ARDUINO_BEETHBOARD_PORT", "/dev/ttyACM0")
 freq = [1] * 500
@@ -75,28 +78,41 @@ def chi_square(observed, expected):
 def detect(args):
     commander = Commander()
     measurements = []
+    is_record = False
+    batch_record = Counter()
 
     cal_peaks = []
     rdir = args.rdir
     for record in os.listdir(rdir):
         with open(rdir / record, "r") as fin:
-            data = json.load(fin)[1000:2000]
+            data = json.load(fin)[4096:4096*2]
         peaks = get_peaks(data)
         cal_peaks.append(CalibrationPeak(record, peaks))
 
     with serial.Serial(device, port) as ser:
         for batch in filter(bool, map(parse_line, ser)):
             measurements.extend(batch)
-            measurements = measurements[-256:]
-            with suppress(Exception):
+            measurements = measurements[-4096:]
+            with suppress(BaseException):
                 peaks = get_peaks(measurements)
                 if peaks[0].intensity < 600:
+                    if is_record:
+                        most_common = batch_record.most_common()
+                        if len(most_common):
+                            l = most_common[0][0]
+                            print("typing", l)
+                            write(l)
+                    batch_record.clear()
+                    is_record = false
                     continue
                 try:
                     chis = [(chi_square(peaks, cp.peaks), cp) for cp in cal_peaks]
                     cs, mat = min(chis)
-                    if cs < 35:
-                        print(mat.iid.split(".")[0], peaks[0].intensity, cs)
+                    if cs < 40:
+                        note = "0abcdefghijklmnopqrstuvwxyz"[int(mat.iid.split(".")[0])]
+                        print(note, peaks[0].intensity, cs)
+                        is_record = True
+                        batch_record.update(note)
                 except Exception as e:
                     print(traceback.format_exc())
 

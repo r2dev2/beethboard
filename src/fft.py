@@ -13,7 +13,7 @@ class Peak(NamedTuple):
     intensity: float
 
 
-def get_peaks(data, internals=None, limit=1000):
+def get_peaks(data, internals=None, limit=5000):
     data.sort(key=lambda x: x[0])
     time = np.array([t / 1e6 for t, _ in data])
     ampie = np.array([a for _, a in data])
@@ -34,7 +34,8 @@ def get_peaks(data, internals=None, limit=1000):
 
 def main():
     with open([*sys.argv, "owo.json"][1], "r") as fin:
-        data = json.load(fin)[1000:2000]
+        ii = 3
+        data = json.load(fin)[4096:4096*2]
 
     peaks = get_peaks(data, globals())
 
@@ -44,7 +45,7 @@ def main():
     plt.plot(freq, np.abs(fourier))
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Intensity")
-    plt.xlim([50, 1500])
+    plt.xlim([50, 2000])
     plt.ylim([0, fourier[peak_loc[0]] * 2])
     plt.show()
 
