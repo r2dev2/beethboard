@@ -1,9 +1,10 @@
-from pathlib import Path
-from threading import Thread
-from queue import Queue
-from contextlib import suppress
-import time
 import json
+import time
+from contextlib import suppress
+from pathlib import Path
+from queue import Queue
+from threading import Thread
+
 
 class Recorder(Thread):
     def __init__(self, record_dir):
@@ -31,7 +32,7 @@ class Recorder(Thread):
     def run(self):
         while 1:
             if not self._is_recording:
-                time.sleep(.1)
+                time.sleep(0.1)
                 continue
             beg = time.time()
             all_data = []

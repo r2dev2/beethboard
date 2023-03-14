@@ -1,33 +1,32 @@
-import traceback
-from typing import NamedTuple
-from contextlib import suppress
-from struct import unpack, calcsize
-from pathlib import Path
 import json
-import time
 import os
-import serial
 import sys
+import time
+import traceback
 from argparse import ArgumentParser
 from collections import Counter
+from contextlib import suppress
+from pathlib import Path
+from struct import calcsize, unpack
+from typing import NamedTuple
 
-from recorder import Recorder, Commander
-from fft import get_peaks, Peak
+import serial
+
+from fft import Peak, get_peaks
+from recorder import Commander, Recorder
 from typer import write
 
 buff_size = 256
-port = 115200
-port = 853600
-port = 2_500_000
-# port = 2457600
+baud = 2_500_000
 device = os.environ.get("ARDUINO_BEETHBOARD_PORT", "/dev/ttyACM0")
-freq = [1] * 500
 data_fmt = "<Lh"
 data_size = calcsize(data_fmt)
+
 
 class CalibrationPeak(NamedTuple):
     iid: str
     peaks: list[Peak]
+
 
 def parse_line(line: bytes):
     # print(len(line))
@@ -42,10 +41,11 @@ def parse_line(line: bytes):
         lino.append(unpack(data_fmt, line[start:end]))
     return lino
 
+
 def record(args):
     commander = Commander()
     recorder = Recorder(args.rdir)
-    with serial.Serial(device, port) as ser:
+    with serial.Serial(device, baud) as ser:
         for batch in filter(bool, map(parse_line, ser)):
             command = commander.get_cmd()
             if command is not None:
@@ -60,22 +60,18 @@ def record(args):
 
 
 def chi_square(observed, expected):
-    # obs = sorted(observed, key=lambda o: o.freq)[0].freq
-    # exp = sorted(expected, key=lambda e: e.freq)[0].freq
-    # return (obs - exp) ** 2 / exp
     exp_scale = 1 / expected[0].intensity
     ob_scale = 1 / observed[0].intensity
     return sum(
-        (e.intensity * exp_scale + o.intensity * ob_scale) * (o.freq - e.freq) ** 2 / e.freq
+        (e.intensity * exp_scale + o.intensity * ob_scale)
+        * (o.freq - e.freq) ** 2
+        / e.freq
         for o, e in zip(observed, expected)
     )
-    chi1 =  sum((o.freq - e.freq) ** 2 / e.freq for o, e in zip(observed, expected))
-    chi2 = sum((o.intensity * ob_scale - e.intensity * exp_scale) ** 2 / (e.intensity * exp_scale) for o, e in zip(observed, expected))
-    chi2 *= observed[0].freq ** 2
-    return chi1 + chi2
 
 
 def detect(args):
+    # maybe remove commander? don't think I need to send any commands here
     commander = Commander()
     measurements = []
     is_record = False
@@ -85,11 +81,11 @@ def detect(args):
     rdir = args.rdir
     for record in os.listdir(rdir):
         with open(rdir / record, "r") as fin:
-            data = json.load(fin)[4096:4096*2]
+            data = json.load(fin)[4096 : 4096 * 2]
         peaks = get_peaks(data)
         cal_peaks.append(CalibrationPeak(record, peaks))
 
-    with serial.Serial(device, port) as ser:
+    with serial.Serial(device, baud) as ser:
         for batch in filter(bool, map(parse_line, ser)):
             measurements.extend(batch)
             measurements = measurements[-4096:]
@@ -109,6 +105,8 @@ def detect(args):
                     chis = [(chi_square(peaks, cp.peaks), cp) for cp in cal_peaks]
                     cs, mat = min(chis)
                     if cs < 40:
+                        # yea ik there is a lowercase in strings i was just too lazy lol
+                        # also the 0 at the front is bc the note id starts with 1
                         note = "0abcdefghijklmnopqrstuvwxyz"[int(mat.iid.split(".")[0])]
                         print(note, peaks[0].intensity, cs)
                         is_record = True
@@ -125,18 +123,10 @@ def main():
     det = sub.add_parser("detect", help="detect the notes")
 
     rec.add_argument(
-        "-r",
-        "--rdir",
-        help="record dir",
-        type=Path,
-        default=Path("recording")
+        "-r", "--rdir", help="record dir", type=Path, default=Path("recording")
     )
     det.add_argument(
-        "-r",
-        "--rdir",
-        help="record dir",
-        type=Path,
-        default=Path("recording")
+        "-r", "--rdir", help="record dir", type=Path, default=Path("recording")
     )
 
     rec.set_defaults(func=record)
